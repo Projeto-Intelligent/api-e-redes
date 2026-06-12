@@ -1,0 +1,21 @@
+{
+  "name": "grid-operator-middleware-v2",
+  "version": "2.0.0",
+  "description": "INTELLIGENT Grid Operator Middleware V2 - GCP Pub/Sub Pull Subscriber",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node index.js",
+    "test:perf": "node performance_test.js",
+    "test:adapter": "node test_metering_adapt.js",
+    "test": "node test_metering_adapt.js && node performance_test.js"
+  },
+  "dependencies": {
+    "@google-cloud/pubsub": "^5.3.0",
+    "dotenv": "^17.4.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "private": true
+}

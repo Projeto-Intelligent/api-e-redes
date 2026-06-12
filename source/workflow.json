@@ -1,0 +1,52 @@
+{
+  "name": "INTELLIGENT Grid Operator Middleware V2 Workflow",
+  "version": "2.0.0",
+  "description": "Defines the event-driven workflow of the Grid Operator Middleware under WP3 Task 3.3 for pulling, validating, routing, and auditing electricity grid signals and market transactions.",
+  "trigger": {
+    "type": "GCP_PUBSUB_PULL_SUBSCRIPTION",
+    "subscriptionName": "projects/${GCP_PROJECT_ID}/subscriptions/grid-operator-sub-v2",
+    "concurrencyLimit": 100
+  },
+  "pipeline": [
+    {
+      "step": 1,
+      "name": "Message Ingestion & Parsing",
+      "action": "Parse raw binary payload of the incoming Pub/Sub message into a structured JSON object. If parsing fails, ACK immediately and send format failure record to audit trail.",
+      "failure_mode": "ACK_AND_AUDIT"
+    },
+    {
+      "step": 2,
+      "name": "Transport Header Validation",
+      "action": "Verify presence and datatype of necessary transport fields: messageId, exchange, timestampUtc, pilotId, scenarioId, and payload. Ensure 'exchange' discriminator is one of the 5 valid types.",
+      "failure_mode": "ACK_AND_AUDIT"
+    },
+    {
+      "step": 3,
+      "name": "Ontology payload validation",
+      "action": "Verify that the message payload matches the semantic schema definitions in D3.1 (INTELLIGENT ontology) for the resolved exchange type (e.g. Traffic light code 0/1/2 for GridSignal status).",
+      "failure_mode": "ACK_AND_AUDIT"
+    },
+    {
+      "step": 4,
+      "name": "Downstream Routing & Authorization",
+      "action": "Resolve the appropriate pilot target endpoint URL and retrieve the associated security token. Perform HTTP POST request with specific security headers.",
+      "failure_mode": "THROW_AND_NACK"
+    },
+    {
+      "step": 5,
+      "name": "Audit Logging",
+      "action": "Publish an asynchronous tracking record containing the original messageId, exchange type, final delivery status, and response details to the 'store_data' Pub/Sub topic for BigQuery storage.",
+      "failure_mode": "LOG_LOCAL_WARN_CONTINUE"
+    },
+    {
+      "step": 6,
+      "name": "Transaction Acknowledgment",
+      "action": "Invoke message.ack() to remove the processed message from the GCP subscription queue, concluding the pipeline run successfully.",
+      "failure_mode": "NONE"
+    }
+  ],
+  "monitoring": {
+    "audit_trail_topic": "projects/${GCP_PROJECT_ID}/topics/store_data",
+    "retention_period_days": 30
+  }
+}
