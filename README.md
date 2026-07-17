@@ -83,3 +83,16 @@ cd deploy
 - **Runtime**: Node.js (v18+) with native ES Modules (ESM).
 - **GCP Services**: Cloud Pub/Sub, Cloud Run / App Engine (deployment environment).
 - **Communication**: HTTP/1.1 & HTTP/2 via native Node.js `fetch` (zero-dependency HTTP forwarding).
+
+## 📄 License
+
+This project is licensed under the **Apache License, Version 2.0**.
+
+Additional terms applicable to this repository are provided in **E-REDES-LICENSE.md**.
+
+By using, modifying or redistributing this software, you agree to comply with both the Apache License 2.0 and the supplementary terms contained in the E-REDES License Agreement.
+
+For more information, see:
+
+- `LICENSE`
+- `E-REDES-LICENSE.md`
