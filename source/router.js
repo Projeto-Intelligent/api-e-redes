@@ -15,11 +15,17 @@ import { config } from './config.js';
  * @returns {Promise<object>} Result of the routing operation { success: boolean, statusCode?: number, responseText?: string, error?: string }
  */
 export async function routeMessage(message) {
-  const { exchange, payload, messageId, pilotId } = message;
-  const endpoint = config.endpoints[exchange];
-  const token = config.entityTokens[exchange];
+  const { exchange, payload, messageId, pilotId, transactionId, topicName, topicOwner, topicVersion, fqcn } = message;
+  const endpoint = config.endpoint;
+  const token = config.bearerToken;
 
   console.log(`[Router] Message ${messageId} (${exchange}) destined for pilot "${pilotId}". Attempting routing to: ${endpoint}`);
+
+  // Require `fqcn` to be provided by the incoming message
+  if (!fqcn) {
+    console.error(`[Router] [BAD_REQUEST] Missing required 'fqcn' in message ${messageId}`);
+    return { success: false, statusCode: 400, error: 'Missing required field: fqcn' };
+  }
 
   // For testing purposes: if endpoint is default/mock, simulate network response
   if (endpoint.includes('intelligent-pilot.eu')) {
@@ -38,6 +44,8 @@ export async function routeMessage(message) {
 
   // Real HTTP execution for production
   try {
+    // Ensure we always have a transactionId
+
     const response = await fetch(endpoint, {
       method: 'POST',
       headers: {
@@ -45,16 +53,18 @@ export async function routeMessage(message) {
         'Authorization': `Bearer ${token}`,
         'X-Message-ID': messageId,
         'X-Pilot-ID': pilotId,
+        'x-api-key': token,
         'X-Exchange-Discriminator': exchange,
         'User-Agent': 'INTELLIGENT-Grid-Operator-Middleware/2.0.0'
       },
       body: JSON.stringify({
-        messageId,
-        exchange,
-        timestampUtc: message.timestampUtc,
-        pilotId,
-        scenarioId: message.scenarioId,
-        payload
+        fqcn,
+        topicName: topicName || 'TOPIC_NAME',
+        topicOwner: topicOwner || 'TOPIC_OWNER',
+        topicVersion: topicVersion || 'TOPIC_VERSION',
+        transactionId: crypto.randomUUID(),
+        payload: typeof payload === 'string' ? payload : JSON.stringify(payload),
+        anonymousRecipient: []
       })
     });
 

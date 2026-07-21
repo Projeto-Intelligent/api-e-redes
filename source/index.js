@@ -155,10 +155,7 @@ function main() {
   console.log(`[Init] Configured GCP Project ID: ${config.projectId}`);
   console.log(`[Init] Target Pub/Sub Subscription: ${config.subscriptionName}`);
   console.log(`[Init] Flow Control Max Messages: ${config.flowControl.maxMessages}`);
-  console.log(`[Init] Dynamic Routing Endpoints:`);
-  Object.entries(config.endpoints).forEach(([exchange, url]) => {
-    console.log(`   - ${exchange} => ${url}`);
-  });
+  console.log(`[Init] Downstream routing endpoint: ${config.endpoint}`);
 
   const subscription = pubSubClient.subscription(config.subscriptionName, {
     flowControl: config.flowControl,
