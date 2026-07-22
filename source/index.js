@@ -123,7 +123,7 @@ async function messageHandler(message) {
         pilotId,
         scenarioId,
         statusCode: routingResult.statusCode,
-        responseText: routingResult.responseText
+        responseBody: routingResult.responseBody
       });
 
       console.log(`[Subscriber] [ACK] Message ${messageId} successfully processed & acknowledged.`);

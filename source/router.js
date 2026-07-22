@@ -12,7 +12,7 @@ import { config } from './config.js';
  * Utilizes native Node.js fetch (available in Node.js 18+).
  * 
  * @param {object} message - The validated message object containing headers and payload
- * @returns {Promise<object>} Result of the routing operation { success: boolean, statusCode?: number, responseText?: string, error?: string }
+ * @returns {Promise<object>} Result of the routing operation { success: boolean, statusCode?: number, responseBody?: any, error?: string }
  */
 export async function routeMessage(message) {
   const { exchange, payload, messageId, pilotId, transactionId, topicName, topicOwner, topicVersion, fqcn } = message;
@@ -44,7 +44,6 @@ export async function routeMessage(message) {
 
   // Real HTTP execution for production
   try {
-    // Ensure we always have a transactionId
 
     const response = await fetch(endpoint, {
       method: 'POST',
@@ -68,22 +67,23 @@ export async function routeMessage(message) {
       })
     });
 
-    const responseText = await response.text();
+    const isJson = response.headers.get('content-type')?.includes('application/json');
+    const responseBody = isJson ? await response.json() : await response.text();
 
     if (response.ok) {
       console.log(`[Router] [SUCCESS] Message ${messageId} routed to ${exchange} endpoint. HTTP ${response.status}`);
-      return { 
-        success: true, 
-        statusCode: response.status, 
-        responseText 
+      return {
+        success: true,
+        statusCode: response.status,
+        responseBody
       };
     } else {
-      console.error(`[Router] [ERROR] Downstream returned error code HTTP ${response.status}: ${responseText}`);
-      return { 
-        success: false, 
-        statusCode: response.status, 
+      console.error(`[Router] [ERROR] Downstream returned error code HTTP ${response.status}: ${JSON.stringify(responseBody)}`);
+      return {
+        success: false,
+        statusCode: response.status,
         error: `Downstream error: HTTP ${response.status}`,
-        responseText 
+        responseBody
       };
     }
   } catch (error) {
