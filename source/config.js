@@ -46,7 +46,7 @@ export const config = {
   httpListenerPort: parseInt(process.env.HTTP_LISTENER_PORT || '8080', 10),
   httpListenerPath: process.env.HTTP_LISTENER_PATH || '/message',
 
-  // Single downstream routing endpoint used for all message types
+  // Downstream gateway endpoint used for all message types
   endpoint: defaultEndpoint,
   apiKey: defaultApiKey,
 

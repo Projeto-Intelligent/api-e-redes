@@ -3,7 +3,7 @@
  * 
  * Main entry point for the Version 2 Grid Operator Middleware. This script
  * pulls messages from a GCP Pub/Sub subscription, validates their transport
- * headers and ontology, forwards payloads to downstream endpoints, logs audit
+ * headers and ontology, forwards payloads to gateway endpoints, logs audit
  * events, and properly manages message acknowledgement (ACK/NACK).
  */
 
@@ -208,7 +208,7 @@ async function messageHandler(message) {
     return;
   }
 
-  // 3. Forward to designated Downstream Endpoint (Routing)
+  // 3. Forward to designated Gateway Endpoint (Routing)
   try {
     const routingResult = await routeMessage(parsedMessage);
 

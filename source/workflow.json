@@ -29,7 +29,7 @@
     {
       "step": 4,
       "name": "Downstream Routing & API Key",
-      "action": "Use the single configured downstream endpoint and perform the HTTP POST request with the x-api-key header.",
+      "action": "Use the configured downstream gateway endpoint and perform the HTTP POST request with the x-api-key header.",
       "failure_mode": "THROW_AND_NACK"
     },
     {

@@ -25,7 +25,7 @@ graph TD
         router["Routing Module<br/>(router.js)"]
     end
 
-    subgraph Pilots ["Cross-Pilot Downstream Endpoints"]
+    subgraph Pilots ["Cross-Pilot Gateway Endpoints"]
         PT_EP["Portugal Pilot Endpoint<br/>(E-REDES / GSY DEX)"]
         CH_EP["Switzerland Pilot Endpoint<br/>(AEM / HSLU CELL)"]
         IE_EP["Ireland Pilot Endpoint<br/>(Aran Islands)"]

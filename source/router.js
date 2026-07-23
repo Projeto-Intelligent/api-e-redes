@@ -1,7 +1,7 @@
 /**
  * INTELLIGENT Grid Operator Middleware V2 - Routing & HTTP Forwarding Module
  * 
- * Responsible for routing messages to the downstream endpoint
+ * Responsible for routing messages to the gateway endpoint
  * and attaching the configured API key.
  */
 
@@ -106,7 +106,7 @@ export async function routeMessage(message) {
   }
 
   if (!endpoint) {
-    console.error(`[Router] [CONFIG_ERROR] No downstream endpoint configured for exchange ${exchange}`);
+    console.error(`[Router] [CONFIG_ERROR] No gateway endpoint configured for exchange ${exchange}`);
     return { success: false, statusCode: 500, error: `No endpoint configured for exchange ${exchange}` };
   }
 
