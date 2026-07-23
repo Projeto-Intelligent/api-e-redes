@@ -28,8 +28,8 @@
     },
     {
       "step": 4,
-      "name": "Downstream Routing & Authorization",
-      "action": "Resolve the appropriate pilot target endpoint URL and retrieve the associated security token. Perform HTTP POST request with specific security headers.",
+      "name": "Downstream Routing & API Key",
+      "action": "Use the single configured downstream endpoint and perform the HTTP POST request with the x-api-key header.",
       "failure_mode": "THROW_AND_NACK"
     },
     {

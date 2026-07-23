@@ -1,10 +1,11 @@
 /**
  * INTELLIGENT Grid Operator Middleware V2 - Routing & HTTP Forwarding Module
  * 
- * Responsible for routing messages to the appropriate downstream pilot endpoints
- * and attaching authorization credentials as per the EWDS specification.
+ * Responsible for routing messages to the downstream endpoint
+ * and attaching the configured API key.
  */
 
+import crypto from 'crypto';
 import { config } from './config.js';
 
 /**
@@ -15,56 +16,74 @@ import { config } from './config.js';
  * @returns {Promise<object>} Result of the routing operation { success: boolean, statusCode?: number, responseBody?: any, error?: string }
  */
 export async function routeMessage(message) {
-  const { exchange, payload, messageId, pilotId, transactionId, topicName, topicOwner, topicVersion, fqcn } = message;
+  const {
+    exchange,
+    payload,
+    messageId,
+    pilotId,
+    transactionId,
+    topicName: messageTopicName,
+    topicOwner: messageTopicOwner,
+    topicVersion: messageTopicVersion,
+    fqcn: messageFqcn,
+    entityId: messageEntityId,
+  } = message;
+
+  const metadata = config.getRoutingMetadataForExchange(exchange);
   const endpoint = config.endpoint;
-  const token = config.bearerToken;
+  const apiKey = config.apiKey;
+  const topicName = messageTopicName || metadata.topicName;
+  const topicOwner = messageTopicOwner || metadata.topicOwner;
+  const topicVersion = messageTopicVersion || metadata.topicVersion;
+  const fqcn = messageFqcn || metadata.fqcn;
+  const entityId = messageEntityId || config.entityId;
+  const routingTransactionId = transactionId || crypto.randomUUID();
 
-  console.log(`[Router] Message ${messageId} (${exchange}) destined for pilot "${pilotId}". Attempting routing to: ${endpoint}`);
+  console.log(`[Router] Message ${messageId} (${exchange}) destined for pilot "${pilotId}". Using endpoint: ${endpoint}`);
+  console.log(`[Router] Routing config for exchange ${exchange}: topicName=${topicName}, topicOwner=${topicOwner}, topicVersion=${topicVersion}, fqcn=${fqcn}, entityId=${entityId}`);
 
-  // Require `fqcn` to be provided by the incoming message
   if (!fqcn) {
     console.error(`[Router] [BAD_REQUEST] Missing required 'fqcn' in message ${messageId}`);
     return { success: false, statusCode: 400, error: 'Missing required field: fqcn' };
   }
 
-  // For testing purposes: if endpoint is default/mock, simulate network response
-  if (endpoint.includes('intelligent-pilot.eu')) {
-    console.log(`[Router] [MOCK SIMULATION] Forwarding message to sandbox ${exchange} endpoint...`);
-    await new Promise(resolve => setTimeout(resolve, 150)); // simulate latency
-    
-    // Simulate high success rate, allow disabling failures during testing/benchmarking
-    if (process.env.DISABLE_MOCK_FAILURES === 'true' || Math.random() > 0.05) {
-      console.log(`[Router] [MOCK SUCCESS] Message ${messageId} successfully accepted by ${exchange} downstream.`);
-      return { success: true, statusCode: 200, responseText: 'OK (Simulated)' };
-    } else {
-      console.warn(`[Router] [MOCK FAILURE] Temporary outage at ${endpoint}`);
-      throw new Error(`Connection timed out to simulated endpoint: ${endpoint}`);
-    }
+  if (!endpoint) {
+    console.error(`[Router] [CONFIG_ERROR] No downstream endpoint configured for exchange ${exchange}`);
+    return { success: false, statusCode: 500, error: `No endpoint configured for exchange ${exchange}` };
   }
 
-  // Real HTTP execution for production
-  try {
+  if (endpoint.includes('intelligent-pilot.eu')) {
+    console.log(`[Router] [MOCK SIMULATION] Forwarding message to sandbox ${exchange} endpoint...`);
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    if (process.env.DISABLE_MOCK_FAILURES === 'true' || Math.random() > 0.05) {
+      console.log(`[Router] [MOCK SUCCESS] Message ${messageId} successfully accepted by ${exchange} downstream.`);
+      return { success: true, statusCode: 200, responseBody: 'OK (Simulated)' };
+    }
+    console.warn(`[Router] [MOCK FAILURE] Temporary outage at ${endpoint}`);
+    throw new Error(`Connection timed out to simulated endpoint: ${endpoint}`);
+  }
 
+  try {
     const response = await fetch(endpoint, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`,
         'X-Message-ID': messageId,
         'X-Pilot-ID': pilotId,
-        'x-api-key': token,
+        'x-api-key': apiKey,
         'X-Exchange-Discriminator': exchange,
-        'User-Agent': 'INTELLIGENT-Grid-Operator-Middleware/2.0.0'
+        'User-Agent': 'INTELLIGENT-Grid-Operator-Middleware/2.0.0',
       },
       body: JSON.stringify({
         fqcn,
-        topicName: topicName || 'TOPIC_NAME',
-        topicOwner: topicOwner || 'TOPIC_OWNER',
-        topicVersion: topicVersion || 'TOPIC_VERSION',
-        transactionId: crypto.randomUUID(),
-        payload: typeof payload === 'string' ? payload : JSON.stringify(payload),
-        anonymousRecipient: []
-      })
+        entityId,
+        topicName,
+        topicOwner,
+        topicVersion,
+        transactionId: routingTransactionId,
+        payload,
+        anonymousRecipient: [],
+      }),
     });
 
     const isJson = response.headers.get('content-type')?.includes('application/json');
@@ -75,19 +94,19 @@ export async function routeMessage(message) {
       return {
         success: true,
         statusCode: response.status,
-        responseBody
-      };
-    } else {
-      console.error(`[Router] [ERROR] Downstream returned error code HTTP ${response.status}: ${JSON.stringify(responseBody)}`);
-      return {
-        success: false,
-        statusCode: response.status,
-        error: `Downstream error: HTTP ${response.status}`,
-        responseBody
+        responseBody,
       };
     }
+
+    console.error(`[Router] [ERROR] Downstream returned error code HTTP ${response.status}: ${JSON.stringify(responseBody)}`);
+    return {
+      success: false,
+      statusCode: response.status,
+      error: `Downstream error: HTTP ${response.status}`,
+      responseBody,
+    };
   } catch (error) {
     console.error(`[Router] [NETWORK EXCEPTION] Failed to connect to ${endpoint}: ${error.message}`);
-    throw error; // Throw so caller knows to NACK for reprocessing
+    throw error;
   }
 }

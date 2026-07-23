@@ -7,6 +7,7 @@
  * events, and properly manages message acknowledgement (ACK/NACK).
  */
 
+import { createServer } from 'http';
 import { PubSub } from '@google-cloud/pubsub';
 import { config } from './config.js';
 import { validateTransportHeader, validateOntologyPayload } from './validator.js';
@@ -18,6 +19,100 @@ import { routeMessage } from './router.js';
 const pubSubClient = new PubSub({
   projectId: config.projectId,
 });
+
+function parseJsonRequest(req) {
+  return new Promise((resolve, reject) => {
+    let body = '';
+    req.setEncoding('utf8');
+    req.on('data', (chunk) => {
+      body += chunk;
+    });
+    req.on('end', () => {
+      try {
+        resolve(JSON.parse(body || '{}'));
+      } catch (err) {
+        reject(err);
+      }
+    });
+    req.on('error', reject);
+  });
+}
+
+function sendJsonResponse(res, statusCode, payload) {
+  const body = JSON.stringify(payload);
+  res.writeHead(statusCode, {
+    'Content-Type': 'application/json',
+    'Content-Length': Buffer.byteLength(body, 'utf8'),
+  });
+  res.end(body);
+}
+
+async function httpMessageHandler(req, res) {
+  const requestPath = new URL(req.url || '', 'http://localhost').pathname;
+
+  if (req.method !== 'POST') {
+    sendJsonResponse(res, 405, { error: 'Method Not Allowed. Use POST.' });
+    return;
+  }
+
+  if (requestPath !== config.httpListenerPath) {
+    sendJsonResponse(res, 404, { error: 'Not Found' });
+    return;
+  }
+
+  let parsedMessage;
+  try {
+    parsedMessage = await parseJsonRequest(req);
+  } catch (err) {
+    console.error('[HTTP Listener] Invalid JSON body received:', err.message);
+    sendJsonResponse(res, 400, { error: 'Invalid JSON payload' });
+    return;
+  }
+
+  const headerValidation = validateTransportHeader(parsedMessage);
+  if (!headerValidation.isValid) {
+    console.error(`[HTTP Listener] Invalid transport header: ${headerValidation.error}`);
+    await publishAuditEvent(parsedMessage.messageId || 'unknown', parsedMessage.exchange || 'Unknown', 'FAILED', {
+      error: `Header validation failed: ${headerValidation.error}`,
+    });
+    sendJsonResponse(res, 400, { error: headerValidation.error });
+    return;
+  }
+
+  const ontologyValidation = validateOntologyPayload(parsedMessage);
+  if (!ontologyValidation.isValid) {
+    console.error(`[HTTP Listener] Ontology validation failed for exchange ${parsedMessage.exchange}: ${ontologyValidation.error}`);
+    await publishAuditEvent(parsedMessage.messageId, parsedMessage.exchange, 'FAILED', {
+      error: `Ontology validation failed: ${ontologyValidation.error}`,
+    });
+    sendJsonResponse(res, 400, { error: ontologyValidation.error });
+    return;
+  }
+
+  try {
+    const routingResult = await routeMessage(parsedMessage);
+
+    await publishAuditEvent(parsedMessage.messageId, parsedMessage.exchange, routingResult.success ? 'SUCCESS' : 'FAILED', {
+      statusCode: routingResult.statusCode,
+      responseBody: routingResult.responseBody,
+      error: routingResult.error,
+    });
+
+    const statusCode = routingResult.success ? 200 : Math.max(400, routingResult.statusCode || 502);
+    sendJsonResponse(res, statusCode, {
+      success: routingResult.success,
+      statusCode: routingResult.statusCode,
+      responseBody: routingResult.responseBody,
+      error: routingResult.error,
+    });
+  } catch (error) {
+    console.error(`[HTTP Listener] Routing execution failed for message ${parsedMessage.messageId}: ${error.message}`);
+    await publishAuditEvent(parsedMessage.messageId, parsedMessage.exchange, 'FAILED', {
+      error: error.message,
+    });
+    sendJsonResponse(res, 503, { error: 'Downstream routing failed', details: error.message });
+  }
+}
 
 /**
  * Publishes an audit event to a secondary "store_data" Pub/Sub topic.
@@ -156,29 +251,58 @@ function main() {
   console.log(`[Init] Target Pub/Sub Subscription: ${config.subscriptionName}`);
   console.log(`[Init] Flow Control Max Messages: ${config.flowControl.maxMessages}`);
   console.log(`[Init] Downstream routing endpoint: ${config.endpoint}`);
+  console.log(`[Init] Pub/Sub enabled: ${config.pubsubEnabled}`);
+  console.log(`[Init] HTTP listener enabled: ${config.httpListenerEnabled}`);
 
-  const subscription = pubSubClient.subscription(config.subscriptionName, {
-    flowControl: config.flowControl,
-    ackDeadlineSeconds: config.ackDeadlineSeconds
-  });
+  let subscription;
+  if (config.pubsubEnabled) {
+    subscription = pubSubClient.subscription(config.subscriptionName, {
+      flowControl: config.flowControl,
+      ackDeadlineSeconds: config.ackDeadlineSeconds,
+    });
 
-  // Attach handlers
-  subscription.on('message', messageHandler);
-  
-  subscription.on('error', (error) => {
-    console.error(`[Subscriber] [CRITICAL_SYSTEM_ERROR] Pub/Sub subscription encountered an error: ${error.message}`);
-  });
+    // Attach handlers
+    subscription.on('message', messageHandler);
+    subscription.on('error', (error) => {
+      console.error(`[Subscriber] [CRITICAL_SYSTEM_ERROR] Pub/Sub subscription encountered an error: ${error.message}`);
+    });
 
-  console.log(`\n[Subscriber] Active and listening for messages on GCP Pull Subscription...`);
+    console.log(`\n[Subscriber] Active and listening for messages on GCP Pull Subscription...`);
+  } else {
+    console.log('[Subscriber] Pub/Sub processing disabled via PUBSUB_ENABLED=false');
+  }
+
+  let httpServer;
+  if (config.httpListenerEnabled) {
+    httpServer = createServer(httpMessageHandler);
+    httpServer.listen(config.httpListenerPort, () => {
+      console.log(`[HTTP Listener] Ready to receive POST requests at ${config.httpListenerPath} on port ${config.httpListenerPort}`);
+    });
+
+    httpServer.on('error', (error) => {
+      console.error(`[HTTP Listener] Server error: ${error.message}`);
+    });
+  } else {
+    console.log('[HTTP Listener] Disabled via HTTP_LISTENER_ENABLED=false');
+  }
 
   // Graceful Shutdown Mechanics
   const shutdown = async (signal) => {
     console.log(`\n[Shutdown] Received ${signal}. Starting graceful shutdown of Grid Operator Subscriber...`);
     
     try {
-      // Close the subscription stream, preventing new messages from being pulled
-      await subscription.close();
-      console.log('[Shutdown] Closed Pub/Sub subscription listener successfully.');
+      if (subscription) {
+        await subscription.close();
+        console.log('[Shutdown] Closed Pub/Sub subscription listener successfully.');
+      }
+
+      if (httpServer) {
+        await new Promise((resolve, reject) => {
+          httpServer.close((error) => (error ? reject(error) : resolve()));
+        });
+        console.log('[Shutdown] HTTP listener stopped successfully.');
+      }
+
       process.exit(0);
     } catch (err) {
       console.error('[Shutdown] Error closing subscription stream:', err);

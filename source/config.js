@@ -1,8 +1,30 @@
 import dotenv from 'dotenv';
-import path from 'path';
 
 // Load environment variables
 dotenv.config();
+
+const normalizeExchangeKey = (exchange) => {
+  if (!exchange || typeof exchange !== 'string') return 'DEFAULT';
+  return exchange.toUpperCase().replace(/[^A-Z0-9]/g, '_');
+};
+
+const defaultEndpoint = process.env.ENDPOINT || 'https://{the-client-gw-api-here}/api/v2/identity';
+const defaultApiKey = process.env.ENDPOINT_API_KEY || 'api-key-secure-v2';
+const defaultTopicName = process.env.TOPIC_NAME || 'TOPIC_NAME';
+const defaultTopicOwner = process.env.TOPIC_OWNER || 'TOPIC_OWNER';
+const defaultTopicVersion = process.env.TOPIC_VERSION || 'TOPIC_VERSION';
+const defaultFqcn = process.env.FQCN || 'eu.energygrid.messages.GenericMessage';
+
+const getRoutingMetadataForExchange = (exchange) => {
+  const key = normalizeExchangeKey(exchange);
+
+  return {
+    topicName: process.env[`ROUTING_TOPIC_NAME_${key}`] || defaultTopicName,
+    topicOwner: process.env[`ROUTING_TOPIC_OWNER_${key}`] || defaultTopicOwner,
+    topicVersion: process.env[`ROUTING_TOPIC_VERSION_${key}`] || defaultTopicVersion,
+    fqcn: process.env[`ROUTING_FQCN_${key}`] || defaultFqcn,
+  };
+};
 
 export const config = {
   // GCP Configurations
@@ -17,12 +39,20 @@ export const config = {
   },
   ackDeadlineSeconds: parseInt(process.env.ACK_DEADLINE_SECONDS || '60', 10),
 
-  // Routing endpoint (single downstream destination)
-  endpoint: process.env.ENDPOINT || 'https://{the-client-gw-api-here}/api/v2/identity',
+  // Routing metadata
+  entityId: process.env.ENTITY_ID || '612',
+  pubsubEnabled: process.env.PUBSUB_ENABLED !== 'false',
+  httpListenerEnabled: process.env.HTTP_LISTENER_ENABLED !== 'false',
+  httpListenerPort: parseInt(process.env.HTTP_LISTENER_PORT || '8080', 10),
+  httpListenerPath: process.env.HTTP_LISTENER_PATH || '/message',
 
-  // Security token for the downstream endpoint
-  bearerToken: process.env.ENDPOINT_TOKEN || 'token-secure-v2',
+  // Single downstream routing endpoint used for all message types
+  endpoint: defaultEndpoint,
+  apiKey: defaultApiKey,
 
   // Log configuration
   logLevel: process.env.LOG_LEVEL || 'info',
+
+  // Resolve message-type-specific metadata from environment
+  getRoutingMetadataForExchange,
 };

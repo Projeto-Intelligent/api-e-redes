@@ -75,9 +75,15 @@ export function validateOntologyPayload(msg) {
 
   switch (exchange) {
     case 'Metering':
-      // Metering requires active energy consumption, active energy production, active power
-      // Represented as int:DataSet (or similar structure depending on pilot telemetry)
-      if (!payload['int:DataSet']) {
+      // Accept canonical ontology data or the raw E-REDES schema carried by the adapter.
+      const hasCanonicalMetering = payload['int:DataSet'] !== undefined;
+      const hasRawERedesMetering = Boolean(
+        payload.POD &&
+        payload.Date &&
+        Array.isArray(payload.Measures)
+      );
+
+      if (!hasCanonicalMetering && !hasRawERedesMetering) {
         return { isValid: false, error: 'Metering payload must contain "int:DataSet" object' };
       }
       break;

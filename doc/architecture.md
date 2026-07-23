@@ -66,7 +66,7 @@ Authentication and identity management are enforced via the **Energy Web Digital
 
 -   **Decentralized Identifiers (DIDs)**: Clients and pilots are identified by unique cryptographic DIDs.
 -   **Verifiable Credentials (VCs)**: To call the middleware, the incoming message metadata can carry a VC validated by the EWDS Connector.
--   **Security Tokens**: The middleware's routing module mounts unique Bearer Tokens matching the target exchange discriminator (`Authorization: Bearer <token>`) to securely deliver payloads to the correct downstream components.
+-   **API Key**: The middleware's routing module sends the configured API key in the `x-api-key` header to securely deliver payloads to the downstream component.
 
 ---
 
