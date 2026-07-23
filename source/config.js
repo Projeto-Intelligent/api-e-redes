@@ -8,7 +8,7 @@ const normalizeExchangeKey = (exchange) => {
   return exchange.toUpperCase().replace(/[^A-Z0-9]/g, '_');
 };
 
-const defaultEndpoint = process.env.ENDPOINT || 'https://{the-client-gw-api-here}/api/v2/identity';
+const defaultEndpoint = process.env.ENDPOINT || 'https://api.intelligent-pilot.eu/api/v2/messages';
 const defaultApiKey = process.env.ENDPOINT_API_KEY || 'api-key-secure-v2';
 const defaultTopicName = process.env.TOPIC_NAME || 'TOPIC_NAME';
 const defaultTopicOwner = process.env.TOPIC_OWNER || 'TOPIC_OWNER';

@@ -25,6 +25,8 @@ export function adaptERedesMetering(raw, options = {}) {
     throw new Error('Invalid raw payload provided for adapter');
   }
 
+  // TODO: Update this adapter to emit the final ontology-defined payload shape.
+
   const {
     entityId = '612',
     pilotId = 'PT',

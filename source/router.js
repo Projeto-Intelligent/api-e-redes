@@ -8,6 +8,58 @@
 import crypto from 'crypto';
 import { config } from './config.js';
 
+function buildDefaultSendMessageResponse({ messageId, transactionId, statusCode }) {
+  return {
+    clientGatewayMessageId: messageId,
+    did: 'unknown',
+    recipients: {
+      total: 0,
+      sent: statusCode >= 200 && statusCode < 300 ? 0 : 0,
+      failed: statusCode >= 200 && statusCode < 300 ? 0 : 0,
+    },
+    status: [
+      {
+        name: statusCode >= 200 && statusCode < 300 ? 'SENT' : 'FAILED',
+        details: [
+          {
+            did: 'unknown',
+            messageId,
+            statusCode,
+          },
+        ],
+      },
+    ],
+  };
+}
+
+function normalizeSendMessageResponse(responseBody, context) {
+  if (responseBody && typeof responseBody === 'object' && !Array.isArray(responseBody)) {
+    const hasRequiredFields =
+      typeof responseBody.clientGatewayMessageId === 'string' &&
+      typeof responseBody.did === 'string' &&
+      responseBody.recipients &&
+      Array.isArray(responseBody.status);
+
+    if (hasRequiredFields) {
+      return responseBody;
+    }
+
+    return {
+      ...buildDefaultSendMessageResponse(context),
+      ...responseBody,
+      recipients: {
+        ...buildDefaultSendMessageResponse(context).recipients,
+        ...(responseBody.recipients || {}),
+      },
+      status: Array.isArray(responseBody.status)
+        ? responseBody.status
+        : buildDefaultSendMessageResponse(context).status,
+    };
+  }
+
+  return buildDefaultSendMessageResponse(context);
+}
+
 /**
  * Routes and forwards an authorized message to the designated pilot endpoint.
  * Utilizes native Node.js fetch (available in Node.js 18+).
@@ -38,6 +90,12 @@ export async function routeMessage(message) {
   const fqcn = messageFqcn || metadata.fqcn;
   const entityId = messageEntityId || config.entityId;
   const routingTransactionId = transactionId || crypto.randomUUID();
+  const payloadAsString = typeof payload === 'string' ? payload : JSON.stringify(payload);
+  const responseContext = {
+    messageId,
+    transactionId: routingTransactionId,
+    statusCode: 200,
+  };
 
   console.log(`[Router] Message ${messageId} (${exchange}) destined for pilot "${pilotId}". Using endpoint: ${endpoint}`);
   console.log(`[Router] Routing config for exchange ${exchange}: topicName=${topicName}, topicOwner=${topicOwner}, topicVersion=${topicVersion}, fqcn=${fqcn}, entityId=${entityId}`);
@@ -57,7 +115,16 @@ export async function routeMessage(message) {
     await new Promise((resolve) => setTimeout(resolve, 150));
     if (process.env.DISABLE_MOCK_FAILURES === 'true' || Math.random() > 0.05) {
       console.log(`[Router] [MOCK SUCCESS] Message ${messageId} successfully accepted by ${exchange} downstream.`);
-      return { success: true, statusCode: 200, responseBody: 'OK (Simulated)' };
+      return {
+        success: true,
+        statusCode: 200,
+        responseBody: normalizeSendMessageResponse({
+          clientGatewayMessageId: messageId,
+          did: 'did:mock:gateway',
+          recipients: { total: 0, sent: 0, failed: 0 },
+          status: [{ name: 'SENT', details: [{ did: 'did:mock:recipient', messageId, statusCode: 200 }] }],
+        }, responseContext),
+      };
     }
     console.warn(`[Router] [MOCK FAILURE] Temporary outage at ${endpoint}`);
     throw new Error(`Connection timed out to simulated endpoint: ${endpoint}`);
@@ -76,12 +143,13 @@ export async function routeMessage(message) {
       },
       body: JSON.stringify({
         fqcn,
-        entityId,
+        initiatingMessageId: messageId,
+        initiatingTransactionId: routingTransactionId,
         topicName,
-        topicOwner,
         topicVersion,
+        topicOwner,
         transactionId: routingTransactionId,
-        payload,
+        payload: payloadAsString,
         anonymousRecipient: [],
       }),
     });
@@ -94,7 +162,10 @@ export async function routeMessage(message) {
       return {
         success: true,
         statusCode: response.status,
-        responseBody,
+        responseBody: normalizeSendMessageResponse(responseBody, {
+          ...responseContext,
+          statusCode: response.status,
+        }),
       };
     }
 
