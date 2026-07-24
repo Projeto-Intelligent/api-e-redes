@@ -1,0 +1,28 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+            {
+      "type": "node",
+      "request": "launch",
+      "name": "test locally",
+      "program": "./index.js",
+      "cwd":"${workspaceFolder}/source",
+      "envFile": "${workspaceFolder}/source/.env",
+      "env": {
+        "FLOW_EXECUTION_CONTEXT": "api"
+      }
+    },
+        {
+            "type": "node",
+            "request": "launch",
+            "name": "Launch Program",
+            "skipFiles": [
+                "<node_internals>/**"
+            ],
+            "program": "${workspaceFolder}/source/index.js"
+        }
+    ]
+}

@@ -136,15 +136,13 @@ export async function routeMessage(message) {
       headers: {
         'Content-Type': 'application/json',
         'X-Message-ID': messageId,
-        'X-Pilot-ID': pilotId,
+        'X-Pilot-ID': pilotId, /* optional */
         'x-api-key': apiKey,
         'X-Exchange-Discriminator': exchange,
         'User-Agent': 'INTELLIGENT-Grid-Operator-Middleware/2.0.0',
       },
       body: JSON.stringify({
         fqcn,
-        initiatingMessageId: messageId,
-        initiatingTransactionId: routingTransactionId,
         topicName,
         topicVersion,
         topicOwner,

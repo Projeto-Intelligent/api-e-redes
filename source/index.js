@@ -1,8 +1,9 @@
 /**
- * INTELLIGENT Grid Operator Middleware V2 - Node.js GCP Pub/Sub Pull Subscriber
+ * INTELLIGENT Grid Operator Middleware V2 - Node.js HTTP || GCP Pub/Sub Pull Subscriber
  * 
- * Main entry point for the Version 2 Grid Operator Middleware. This script
- * pulls messages from a GCP Pub/Sub subscription, validates their transport
+ * Main entry point for the Version 2 Grid Operator Middleware. Has two execution 
+ * modes HTTP or  GCP Pub/Sub pull subscriber. When the script is configured for 
+ * GCP Pub/Sub pulls messages from a GCP Pub/Sub subscription, validates their transport
  * headers and ontology, forwards payloads to gateway endpoints, logs audit
  * events, and properly manages message acknowledgement (ACK/NACK).
  */
@@ -125,6 +126,7 @@ async function httpMessageHandler(req, res) {
  * @param {object} metadata - Additional metadata such as routing status or error
  */
 async function publishAuditEvent(originalMessageId, exchange, status, metadata = {}) {
+  if (process.env.PUBLISH_AUDIT_EVENT==='false') return;
   try {
     const auditTopic = pubSubClient.topic(config.auditLogTopic);
     
@@ -244,14 +246,14 @@ async function messageHandler(message) {
  * Main application initializer
  */
 function main() {
-  console.log(`======================================================================`);
-  console.log(`INTELLIGENT Grid Operator Middleware V2 - GCP Pub/Sub Pull Subscriber`);
-  console.log(`======================================================================`);
-  console.log(`[Init] Configured GCP Project ID: ${config.projectId}`);
-  console.log(`[Init] Target Pub/Sub Subscription: ${config.subscriptionName}`);
-  console.log(`[Init] Flow Control Max Messages: ${config.flowControl.maxMessages}`);
+  console.log(`=============================================================================`);
+  console.log(`INTELLIGENT Grid Operator Middleware V2 - HTTP || GCP Pub/Sub Pull Subscriber`);
+  console.log(`=============================================================================`);
+  if (process.env.PUBSUB_ENABLED==='true') console.log(`[Init] Configured GCP Project ID: ${config.projectId}`);
+  if (process.env.PUBSUB_ENABLED==='true') console.log(`[Init] Target Pub/Sub Subscription: ${config.subscriptionName}`);
+  if (process.env.PUBSUB_ENABLED==='true')  console.log(`[Init] Flow Control Max Messages: ${config.flowControl.maxMessages}`);
   console.log(`[Init] Downstream routing endpoint: ${config.endpoint}`);
-  console.log(`[Init] Pub/Sub enabled: ${config.pubsubEnabled}`);
+  if (process.env.PUBSUB_ENABLED==='true') console.log(`[Init] Pub/Sub enabled: ${config.pubsubEnabled}`);
   console.log(`[Init] HTTP listener enabled: ${config.httpListenerEnabled}`);
 
   let subscription;

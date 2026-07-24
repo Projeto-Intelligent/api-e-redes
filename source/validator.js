@@ -40,7 +40,7 @@ export function validateTransportHeader(msg) {
       error: `Invalid exchange discriminator "${msg.exchange}". Must be one of: ${VALID_EXCHANGES.join(', ')}` 
     };
   }
-
+  
   // 3. Check timestampUtc
   if (!msg.timestampUtc || typeof msg.timestampUtc !== 'string' || isNaN(Date.parse(msg.timestampUtc))) {
     return { isValid: false, error: 'Missing or invalid "timestampUtc" in transport header' };
@@ -75,6 +75,9 @@ export function validateOntologyPayload(msg) {
 
   switch (exchange) {
     case 'Metering':
+      
+      /* THIS PAYLOAD HAS TO FOLLOW THE RULE FOR QUARTERS FOR EACH READING CHECK ONTOLOGY */
+
       // Accept canonical ontology data or the raw E-REDES schema carried by the adapter.
       const hasCanonicalMetering = payload['int:DataSet'] !== undefined;
       const hasRawERedesMetering = Boolean(

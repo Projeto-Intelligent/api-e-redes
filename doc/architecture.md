@@ -47,6 +47,10 @@ graph TD
     puller -->|7. ACK Message| pubsub
 ```
 
+Current implementation note:
+- The runtime currently forwards messages to a configured gateway endpoint via HTTP POST with `x-api-key`.
+- Full EWDS-native message-broker and Client Gateway integration is documented as the target architecture.
+
 ---
 
 ## 📨 GCP Pub/Sub Pull Pattern
@@ -56,17 +60,17 @@ In Version 2 (M18), the middleware moves from a passive PUSH webhook architectur
 ### Why the Pull Pattern?
 1.  **Backpressure & Concurrency Control**: Flow control settings (`maxMessages: 100`) prevent downstream systems from being overloaded during peak market settlement hours.
 2.  **Reprocessing & Reliability (NACK)**: If a pilot's API endpoint is temporarily offline, the middleware throws a network exception and issues a negative acknowledgement (`nack()`). GCP Pub/Sub then schedules redelivery based on the exponential backoff policy of the subscription.
-3.  **Security**: The middleware sits in a secure Virtual Private Cloud (VPC) and does not need to expose any public HTTP ingress ports.
+3.  **Security**: In production deployments the middleware can run inside a secure Virtual Private Cloud (VPC). For local or hybrid execution, an HTTP listener mode is available and configurable.
 
 ---
 
 ## 🔒 Security & EWDS Integration
 
-Authentication and identity management are enforced via the **Energy Web Digital Spine (EWDS)**:
+Authentication and identity management target the **Energy Web Digital Spine (EWDS)** model:
 
--   **Decentralized Identifiers (DIDs)**: Clients and pilots are identified by unique cryptographic DIDs.
--   **Verifiable Credentials (VCs)**: To call the middleware, the incoming message metadata can carry a VC validated by the EWDS Connector.
--   **API Key**: The middleware's routing module sends the configured API key in the `x-api-key` header to securely deliver payloads to the downstream component.
+-   **Decentralized Identifiers (DIDs)**: EWDS-aligned identity model for clients and pilots.
+-   **Verifiable Credentials (VCs)**: EWDS-aligned credential model for authorization.
+-   **Current state**: Runtime message forwarding uses configured gateway endpoint + `x-api-key`.
 
 ---
 

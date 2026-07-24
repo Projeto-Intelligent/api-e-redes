@@ -10,8 +10,8 @@ This repository contains the Node.js implementation of the Grid Operator Middlew
 
 To help you navigate the system architecture, message schemas, and specifications, the following documentation files have been prepared:
 
-*   [architecture.md](file:///home/nandrade/projects/edp/eu/api/doc/architecture.md): Covers high-level system architecture, GCP Pub/Sub Pull mechanics, event-driven data flow, and integration with the Energy Web Digital Spine (EWDS).
-*   [api_specification.md](file:///home/nandrade/projects/edp/eu/api/doc/api_specification.md): Details the 5 Exchange Discriminators, transport header contracts, ontology-aligned payload structures (D3.1 compliant), and concrete JSON examples.
+*   [architecture.md](architecture.md): Covers high-level system architecture, GCP Pub/Sub Pull mechanics, event-driven data flow, and the target integration with the Energy Web Digital Spine (EWDS).
+*   [api_specification.md](api_specification.md): Details the 5 Exchange Discriminators, transport header contracts, payload structures, and concrete JSON examples.
 
 ---
 
@@ -35,20 +35,27 @@ Configure the middleware by creating a `.env` file in the `source` directory (or
 | :--- | :--- | :--- |
 | `GCP_PROJECT_ID` | Your GCP Project ID | `intelligent-grid-operator` |
 | `GCP_SUBSCRIPTION_NAME` | GCP Pub/Sub Pull Subscription Name | `grid-operator-sub-v2` |
-| `GCP_AUDIT_LOG_TOPIC` | Pub/Sub Topic for Audit Logs (BigQuery) | `store_data` |
+| `GCP_AUDIT_LOG_TOPIC` | Pub/Sub topic for audit records | `store_data` |
 | `FLOW_CONTROL_MAX_MESSAGES` | Max concurrent messages pulled | `100` |
 | `ACK_DEADLINE_SECONDS` | Message ACK deadline in seconds | `60` |
+| `ENDPOINT` | Downstream gateway endpoint URL | `https://api.intelligent-pilot.eu/api/v2/messages` |
+| `ENDPOINT_API_KEY` | API key sent in `x-api-key` | `api-key-secure-v2` |
+| `PUBSUB_ENABLED` | Enable GCP Pub/Sub subscriber mode | `true` |
+| `PUBLISH_AUDIT_EVENT` | Enable audit publishing to Pub/Sub | `false` |
+| `HTTP_LISTENER_ENABLED` | Enable HTTP listener mode | `true` |
+| `HTTP_LISTENER_PORT` | HTTP listener port | `8080` |
+| `HTTP_LISTENER_PATH` | HTTP listener path | `/message` |
 
 ### 4. Running the Middleware
-Start the Pub/Sub listener:
+Start the runtime (supports HTTP listener and/or Pub/Sub mode according to env flags):
 ```bash
 npm run start
 ```
 
 ### 5. Running Performance & Compliance Tests
-Execute the simulated stress and schema-compliance test:
+Execute the adapter and performance/compliance tests:
 ```bash
-npm run test:perf
+npm run test
 ```
 
 ---
@@ -58,7 +65,7 @@ npm run test:perf
 The middleware's deployment components are managed inside the **`deploy`** root directory. The subscriber is deployed as an always-on **Google Cloud Run V2 Service** with dedicated background CPU allocation (`cpu_idle_avoidance = true`), maintaining active connections to pull messages from GCP Pub/Sub in real-time.
 
 ### 1. Configure Components
-The service and all dependent resource components are named and configured in the **[deploy/terraform.tfvars](file:///home/nandrade/projects/edp/eu/api/deploy/terraform.tfvars)** file:
+The service and all dependent resource components are named and configured in **[deploy/terraform.tfvars](../deploy/terraform.tfvars)**:
 ```hcl
 # GCP target parameters
 project_id             = "intelligent-grid-operator"

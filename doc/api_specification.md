@@ -1,6 +1,11 @@
 # API Specification & Message Schemas
 
-This document defines the technical contracts, transport envelopes, and domain-specific ontology structures (INTELLIGENT D3.1 compliant) processed by the **Grid Operator Middleware V2**.
+This document defines the technical contracts, transport envelopes, and domain-specific ontology structures targeted by **Grid Operator Middleware V2**.
+
+Implementation status note:
+- The middleware validates and routes the five exchange domains described below.
+- Some payload mappings remain transitional and may still include pilot-specific or pre-canonical structures until full ontology migration is completed.
+- Runtime validation currently enforces structural checks (required envelope fields and core payload object/array presence) and does not yet enforce all semantic constraints from this document (for example value-domain constraints like GridSignal 0/1/2 encoding or metering D+1/15-minute policy checks).
 
 ---
 
