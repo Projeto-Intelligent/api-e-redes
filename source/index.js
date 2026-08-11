@@ -13,6 +13,7 @@ import { PubSub } from '@google-cloud/pubsub';
 import { config } from './config.js';
 import { validateTransportHeader, validateOntologyPayload } from './validator.js';
 import { routeMessage } from './router.js';
+import { createEwdsPoller } from './ewds.js';
 
 // Initialize Pub/Sub client
 // When deployed on GCP (Cloud Run, GCE, GKE), Pub/Sub client automatically
@@ -48,8 +49,101 @@ function sendJsonResponse(res, statusCode, payload) {
   res.end(body);
 }
 
+async function proxyEwdsGetRequest(req, res, requestUrl) {
+  const firstConfiguredTopic = config.ewds.topics[0] || null;
+  const outgoingParams = new URLSearchParams();
+
+  const incomingFqcn = requestUrl.searchParams.get('fqcn');
+  const fqcn = incomingFqcn || config.ewds.fqcn;
+  if (!fqcn) {
+    sendJsonResponse(res, 400, {
+      error: 'Missing required query parameter: fqcn',
+      hint: 'Provide fqcn in query string or set EWDS_FQCN in environment.',
+    });
+    return;
+  }
+
+  outgoingParams.set('fqcn', fqcn);
+
+  const incomingTopicName = requestUrl.searchParams.get('topicName');
+  const incomingTopicOwner = requestUrl.searchParams.get('topicOwner');
+  const incomingClientId = requestUrl.searchParams.get('clientId');
+  const incomingAmount = requestUrl.searchParams.get('amount');
+  const incomingFrom = requestUrl.searchParams.get('from');
+
+  const topicName = incomingTopicName || firstConfiguredTopic?.name;
+  const topicOwner = incomingTopicOwner || firstConfiguredTopic?.owner;
+  const clientId = incomingClientId || firstConfiguredTopic?.clientId;
+
+  if (topicName) outgoingParams.set('topicName', topicName);
+  if (topicOwner) outgoingParams.set('topicOwner', topicOwner);
+  if (clientId) outgoingParams.set('clientId', clientId);
+  if (incomingFrom) outgoingParams.set('from', incomingFrom);
+
+  outgoingParams.set('amount', incomingAmount || String(config.ewds.fetchAmount));
+
+  const passthroughParams = [
+    'initiatingMessageId',
+    'initiatingTransactionId',
+    'transactionId',
+    'messageId',
+    'messageIds',
+  ];
+
+  for (const paramName of passthroughParams) {
+    const value = requestUrl.searchParams.get(paramName);
+    if (value) {
+      outgoingParams.set(paramName, value);
+    }
+  }
+
+  const baseUrl = config.ewds.baseUrl.endsWith('/') ? config.ewds.baseUrl.slice(0, -1) : config.ewds.baseUrl;
+  const messagesPath = config.ewds.messagesPath.startsWith('/') ? config.ewds.messagesPath : `/${config.ewds.messagesPath}`;
+  const targetUrl = `${baseUrl}${messagesPath}?${outgoingParams.toString()}`;
+
+  try {
+    const response = await fetch(targetUrl, {
+      method: 'GET',
+      headers: {
+        Accept: 'application/json',
+        ...(config.ewds.apiKey ? { 'x-api-key': config.ewds.apiKey } : {}),
+      },
+    });
+
+    const isJson = response.headers.get('content-type')?.includes('application/json');
+    const body = isJson ? await response.json() : await response.text();
+
+    sendJsonResponse(res, response.status, {
+      success: response.ok,
+      upstreamStatus: response.status,
+      request: {
+        targetUrl,
+      },
+      data: body,
+    });
+  } catch (error) {
+    console.error(`[EWDS Proxy] Failed to call upstream GET /api/v2/messages: ${error.message}`);
+    sendJsonResponse(res, 502, {
+      success: false,
+      error: 'Failed to fetch messages from EWDS upstream',
+      details: error.message,
+    });
+  }
+}
+
 async function httpMessageHandler(req, res) {
-  const requestPath = new URL(req.url || '', 'http://localhost').pathname;
+  const requestUrl = new URL(req.url || '', 'http://localhost');
+  const requestPath = requestUrl.pathname;
+
+  if (config.ewds.proxyEnabled && requestPath === config.ewds.proxyPath) {
+    if (req.method !== 'GET') {
+      sendJsonResponse(res, 405, { error: 'Method Not Allowed. Use GET.' });
+      return;
+    }
+
+    await proxyEwdsGetRequest(req, res, requestUrl);
+    return;
+  }
 
   if (req.method !== 'POST') {
     sendJsonResponse(res, 405, { error: 'Method Not Allowed. Use POST.' });
@@ -242,6 +336,67 @@ async function messageHandler(message) {
   }
 }
 
+async function processEwdsEnvelope(envelope, topic, pollMetadata = {}) {
+  if (config.ewds.validateFetchedMessages) {
+    const headerValidation = validateTransportHeader(envelope);
+    if (!headerValidation.isValid) {
+      console.error(`[EWDS] Invalid transport header. topic=${topic.owner}/${topic.name} messageId=${envelope?.messageId || 'unknown'} error=${headerValidation.error}`);
+      await publishAuditEvent(envelope?.messageId || 'unknown', envelope?.exchange || 'Unknown', 'FAILED', {
+        source: 'EWDS',
+        error: `Header validation failed: ${headerValidation.error}`,
+        topic,
+        pollMetadata,
+      });
+      return;
+    }
+
+    const ontologyValidation = validateOntologyPayload(envelope);
+    if (!ontologyValidation.isValid) {
+      console.error(`[EWDS] Ontology validation failed for message ${envelope.messageId}: ${ontologyValidation.error}`);
+      await publishAuditEvent(envelope.messageId, envelope.exchange, 'FAILED', {
+        source: 'EWDS',
+        error: `Ontology validation failed: ${ontologyValidation.error}`,
+        topic,
+        pollMetadata,
+      });
+      return;
+    }
+  } else {
+    console.log('[EWDS] Validation disabled for fetched messages via EWDS_VALIDATE_FETCHED_MESSAGES=false.');
+  }
+
+  if (!config.ewds.forwardFetchedMessages) {
+    await publishAuditEvent(envelope.messageId, envelope.exchange, 'SUCCESS', {
+      source: 'EWDS',
+      mode: 'INGEST_ONLY',
+      topic,
+      pollMetadata,
+    });
+    return;
+  }
+
+  try {
+    const routingResult = await routeMessage(envelope);
+    await publishAuditEvent(envelope.messageId, envelope.exchange, routingResult.success ? 'SUCCESS' : 'FAILED', {
+      source: 'EWDS',
+      mode: 'INGEST_AND_FORWARD',
+      topic,
+      pollMetadata,
+      statusCode: routingResult.statusCode,
+      responseBody: routingResult.responseBody,
+      error: routingResult.error,
+    });
+  } catch (error) {
+    await publishAuditEvent(envelope.messageId, envelope.exchange, 'FAILED', {
+      source: 'EWDS',
+      mode: 'INGEST_AND_FORWARD',
+      topic,
+      pollMetadata,
+      error: error.message,
+    });
+  }
+}
+
 /**
  * Main application initializer
  */
@@ -255,6 +410,16 @@ function main() {
   console.log(`[Init] Downstream routing endpoint: ${config.endpoint}`);
   if (process.env.PUBSUB_ENABLED==='true') console.log(`[Init] Pub/Sub enabled: ${config.pubsubEnabled}`);
   console.log(`[Init] HTTP listener enabled: ${config.httpListenerEnabled}`);
+  if (config.ewds.proxyEnabled) {
+    console.log(`[Init] EWDS proxy endpoint enabled: GET ${config.ewds.proxyPath}`);
+  }
+  if (config.ewds.enabled) {
+    console.log(`[Init] EWDS ingest enabled: true`);
+    console.log(`[Init] EWDS poll interval: ${config.ewds.pollIntervalMs} ms`);
+    console.log(`[Init] EWDS topics configured: ${config.ewds.topics.length}`);
+  } else {
+    console.log('[Init] EWDS ingest disabled via EWDS_ENABLED=false');
+  }
 
   let subscription;
   if (config.pubsubEnabled) {
@@ -275,6 +440,7 @@ function main() {
   }
 
   let httpServer;
+  let stopEwdsPolling;
   if (config.httpListenerEnabled) {
     httpServer = createServer(httpMessageHandler);
     httpServer.listen(config.httpListenerPort, () => {
@@ -286,6 +452,18 @@ function main() {
     });
   } else {
     console.log('[HTTP Listener] Disabled via HTTP_LISTENER_ENABLED=false');
+  }
+
+  if (config.ewds.enabled) {
+    if (config.ewds.topics.length === 0) {
+      console.warn('[EWDS] Enabled but no valid topics were configured. Set EWDS_TOPICS or EWDS_TOPIC_OWNER/NAME/CLIENT_ID (and optional EWDS_TOPIC_VERSION) plus EWDS_FQCN or FQCN.');
+    } else {
+      const ewdsPoller = createEwdsPoller(config.ewds, processEwdsEnvelope);
+      stopEwdsPolling = ewdsPoller.schedule();
+      ewdsPoller.runOnce().catch((error) => {
+        console.error(`[EWDS] Initial polling cycle failed: ${error.message}`);
+      });
+    }
   }
 
   // Graceful Shutdown Mechanics
@@ -303,6 +481,11 @@ function main() {
           httpServer.close((error) => (error ? reject(error) : resolve()));
         });
         console.log('[Shutdown] HTTP listener stopped successfully.');
+      }
+
+      if (stopEwdsPolling) {
+        stopEwdsPolling();
+        console.log('[Shutdown] EWDS polling timer stopped successfully.');
       }
 
       process.exit(0);
