@@ -14,6 +14,7 @@ import { config } from './config.js';
 import { validateTransportHeader, validateOntologyPayload } from './validator.js';
 import { routeMessage } from './router.js';
 import { createEwdsPoller } from './ewds.js';
+import { createSqsPoller } from './sqs_subscriber.js';
 
 // Initialize Pub/Sub client
 // When deployed on GCP (Cloud Run, GCE, GKE), Pub/Sub client automatically
@@ -174,14 +175,16 @@ async function httpMessageHandler(req, res) {
     return;
   }
 
-  const ontologyValidation = validateOntologyPayload(parsedMessage);
-  if (!ontologyValidation.isValid) {
-    console.error(`[HTTP Listener] Ontology validation failed for exchange ${parsedMessage.exchange}: ${ontologyValidation.error}`);
-    await publishAuditEvent(parsedMessage.messageId, parsedMessage.exchange, 'FAILED', {
-      error: `Ontology validation failed: ${ontologyValidation.error}`,
-    });
-    sendJsonResponse(res, 400, { error: ontologyValidation.error });
-    return;
+  if (config.httpValidateOntology) {
+    const ontologyValidation = validateOntologyPayload(parsedMessage);
+    if (!ontologyValidation.isValid) {
+      console.error(`[HTTP Listener] Ontology validation failed for exchange ${parsedMessage.exchange}: ${ontologyValidation.error}`);
+      await publishAuditEvent(parsedMessage.messageId, parsedMessage.exchange, 'FAILED', {
+        error: `Ontology validation failed: ${ontologyValidation.error}`,
+      });
+      sendJsonResponse(res, 400, { error: ontologyValidation.error });
+      return;
+    }
   }
 
   try {
@@ -336,6 +339,22 @@ async function messageHandler(message) {
   }
 }
 
+function processSqsEnvelope(envelope) {
+  return new Promise((resolve) => {
+    const message = {
+      id: envelope.messageId,
+      data: Buffer.from(JSON.stringify(envelope)),
+      ack: () => resolve('ack'),
+      nack: () => resolve('retry'),
+    };
+
+    messageHandler(message).catch((error) => {
+      console.error(`[SQS Subscriber] Message processing failed: ${error.message}`);
+      resolve('retry');
+    });
+  });
+}
+
 async function processEwdsEnvelope(envelope, topic, pollMetadata = {}) {
   if (config.ewds.validateFetchedMessages) {
     const headerValidation = validateTransportHeader(envelope);
@@ -402,7 +421,7 @@ async function processEwdsEnvelope(envelope, topic, pollMetadata = {}) {
  */
 function main() {
   console.log(`=============================================================================`);
-  console.log(`INTELLIGENT Grid Operator Middleware V2 - HTTP || GCP Pub/Sub Pull Subscriber`);
+  console.log(`INTELLIGENT Grid Operator Middleware V2 - HTTP || GCP Pub/Sub / AWS SQS Subscriber`);
   console.log(`=============================================================================`);
   if (process.env.PUBSUB_ENABLED==='true') console.log(`[Init] Configured GCP Project ID: ${config.projectId}`);
   if (process.env.PUBSUB_ENABLED==='true') console.log(`[Init] Target Pub/Sub Subscription: ${config.subscriptionName}`);
@@ -437,6 +456,17 @@ function main() {
     console.log(`\n[Subscriber] Active and listening for messages on GCP Pull Subscription...`);
   } else {
     console.log('[Subscriber] Pub/Sub processing disabled via PUBSUB_ENABLED=false');
+  }
+
+  let sqsSubscriber;
+  if (config.sqs.enabled) {
+    sqsSubscriber = createSqsPoller(config.sqs, processSqsEnvelope);
+    sqsSubscriber.start().catch((error) => {
+      console.error(`[SQS Subscriber] [CRITICAL_SYSTEM_ERROR] Poller stopped: ${error.message}`);
+    });
+    console.log(`[SQS Subscriber] Polling queue ${config.sqs.queueUrl}`);
+  } else {
+    console.log('[SQS Subscriber] Disabled via SQS_ENABLED=false');
   }
 
   let httpServer;
@@ -474,6 +504,11 @@ function main() {
       if (subscription) {
         await subscription.close();
         console.log('[Shutdown] Closed Pub/Sub subscription listener successfully.');
+      }
+
+      if (sqsSubscriber) {
+        await sqsSubscriber.stop();
+        console.log('[Shutdown] Stopped SQS polling successfully.');
       }
 
       if (httpServer) {

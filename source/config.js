@@ -19,7 +19,7 @@ const normalizeExchangeKey = (exchange) => {
 };
 
 const defaultEndpoint = process.env.ENDPOINT || 'https://api.intelligent-pilot.eu/api/v2/messages';
-const defaultApiKey = process.env.ENDPOINT_API_KEY || 'api-key-secure-v2';
+const defaultApiKey = process.env.ENDPOINT_API_KEY || '';
 const defaultTopicName = process.env.TOPIC_NAME || 'TOPIC_NAME';
 const defaultTopicOwner = process.env.TOPIC_OWNER || 'TOPIC_OWNER';
 const defaultTopicVersion = process.env.TOPIC_VERSION || 'TOPIC_VERSION';
@@ -78,11 +78,30 @@ export const config = {
     allowMaxOutstandingMessages: true,
   },
   ackDeadlineSeconds: parseInt(process.env.ACK_DEADLINE_SECONDS || '60', 10),
+  sqs: {
+    enabled: parseBoolean(process.env.SQS_ENABLED, false),
+    queueUrl: process.env.SQS_QUEUE_URL || '',
+    region: process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION,
+    maxMessages: Math.min(parsePositiveInt(process.env.SQS_MAX_MESSAGES, 1), 10),
+    waitTimeSeconds: Math.min(parsePositiveInt(process.env.SQS_WAIT_TIME_SECONDS, 20), 20),
+    visibilityTimeoutSeconds: parsePositiveInt(process.env.SQS_VISIBILITY_TIMEOUT_SECONDS, 360),
+    errorBackoffMs: parsePositiveInt(process.env.SQS_ERROR_BACKOFF_MS, 5000),
+    adapterOptions: {
+      entityId: process.env.SQS_ENTITY_ID || '612',
+      pilotId: process.env.SQS_PILOT_ID || 'PT',
+      scenarioId: process.env.SQS_SCENARIO_ID || 'SCN-PT-METERING-V2',
+      fqcn: process.env.SQS_FQCN || 'eu.energygrid.messages.Metering',
+      topicName: process.env.SQS_TOPIC_NAME || 'SCN-PT-01_METERING',
+      topicOwner: process.env.SQS_TOPIC_OWNER || 'E-REDES',
+      topicVersion: process.env.SQS_TOPIC_VERSION || '1.0',
+    },
+  },
 
   // Routing metadata
   entityId: process.env.ENTITY_ID || '612',
   pubsubEnabled: process.env.PUBSUB_ENABLED !== 'false',
   httpListenerEnabled: process.env.HTTP_LISTENER_ENABLED !== 'false',
+  httpValidateOntology: parseBoolean(process.env.HTTP_VALIDATE_ONTOLOGY, true),
   httpListenerPort: parseInt(process.env.HTTP_LISTENER_PORT || '8080', 10),
   httpListenerPath: process.env.HTTP_LISTENER_PATH || '/message',
 

@@ -18,6 +18,7 @@
  * @param {string} [options.topicName] - Topic name for downstream routing
  * @param {string} [options.topicOwner] - Topic owner for downstream routing
  * @param {string} [options.topicVersion] - Topic version for downstream routing
+ * @param {string} [options.messageId] - Stable source message identifier
  * @returns {object} Fully compliant INTELLIGENT envelope + payload with routing metadata
  */
 export function adaptERedesMetering(raw, options = {}) {
@@ -35,13 +36,14 @@ export function adaptERedesMetering(raw, options = {}) {
     topicName = `SCN-PT-01_METERING`,
     topicOwner = 'E-REDES',
     topicVersion = '1.0',
+    messageId = `msg-${Date.now()}-${Math.floor(Math.random() * 1000000)}`,
   } = options;
 
   const exchangeType = 'Metering';
 
   // 3. Assemble the outgoing transport envelope without normalizing raw E-REDES data.
   const normalizedEnvelope = {
-    messageId: `msg-${Date.now()}-${Math.floor(Math.random() * 1000000)}`,
+    messageId,
     exchange: exchangeType,
     timestampUtc: new Date().toISOString(),
     pilotId,

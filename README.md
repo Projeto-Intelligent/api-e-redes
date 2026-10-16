@@ -41,8 +41,15 @@ Configure the middleware by creating a `.env` file in the `source` directory (or
 | `ENDPOINT` | Downstream gateway endpoint URL | `https://api.intelligent-pilot.eu/api/v2/messages` |
 | `ENDPOINT_API_KEY` | API key sent in `x-api-key` | `api-key-secure-v2` |
 | `PUBSUB_ENABLED` | Enable GCP Pub/Sub subscriber mode | `true` |
+| `SQS_ENABLED` | Enable the AWS SQS long-poll subscriber (use the ECS task role for AWS credentials) | `false` |
+| `SQS_QUEUE_URL` | AWS SQS queue URL; required when `SQS_ENABLED=true` | _(unset)_ |
+| `SQS_MAX_MESSAGES` | Maximum records fetched per SQS poll (1-10) | `1` |
+| `SQS_WAIT_TIME_SECONDS` | SQS long-poll duration in seconds (maximum 20) | `20` |
+| `SQS_VISIBILITY_TIMEOUT_SECONDS` | Visibility timeout applied to each SQS receive | `360` |
+| `SQS_ERROR_BACKOFF_MS` | Delay before retrying after an SQS receive error | `5000` |
 | `PUBLISH_AUDIT_EVENT` | Enable audit publishing to Pub/Sub | `false` |
 | `HTTP_LISTENER_ENABLED` | Enable HTTP listener mode | `true` |
+| `HTTP_VALIDATE_ONTOLOGY` | Validate payload ontology on HTTP POST; transport fields are always validated | `true` |
 | `HTTP_LISTENER_PORT` | HTTP listener port | `8080` |
 | `HTTP_LISTENER_PATH` | HTTP listener path | `/message` |
 | `EWDS_ENABLED` | Enable EWDS ingestion by polling `GET /api/v2/messages` | `false` |
@@ -63,6 +70,18 @@ Configure the middleware by creating a `.env` file in the `source` directory (or
 | `EWDS_CLIENT_ID` | Single-topic clientId for EWDS GET filter | _(unset)_ |
 | `EWDS_TOPIC_VERSION` | Optional single-topic version used for local post-fetch filtering | _(unset)_ |
 | `EWDS_TOPICS` | Multi-topic JSON array with required `owner`, `name`, `clientId` and optional `version`, `fqcn` (overrides single-topic fields) | `[]` |
+
+The HTTP listener accepts `payload` as an object or a string. The router converts
+objects to JSON strings and forwards strings unchanged. With
+`HTTP_VALIDATE_ONTOLOGY=true`, serialized JSON is parsed only for validation and
+must contain an object matching the exchange rules; the original string is not
+modified. Invalid JSON or an incompatible payload returns HTTP 400.
+
+Set `HTTP_VALIDATE_ONTOLOGY=false` and restart the service to allow arbitrary
+string or object payloads on HTTP POST. The required transport fields
+(`messageId`, `exchange`, `timestampUtc`, `pilotId`, `scenarioId`, `payload`) and
+allowed exchange values are still checked. This setting does not affect Pub/Sub,
+SQS, or EWDS polling; `EWDS_VALIDATE_FETCHED_MESSAGES` remains specific to EWDS.
 
 ### 4. EWDS GET Usage
 The service supports two ways of retrieving EWDS messages:
