@@ -174,14 +174,16 @@ async function httpMessageHandler(req, res) {
     return;
   }
 
-  const ontologyValidation = validateOntologyPayload(parsedMessage);
-  if (!ontologyValidation.isValid) {
-    console.error(`[HTTP Listener] Ontology validation failed for exchange ${parsedMessage.exchange}: ${ontologyValidation.error}`);
-    await publishAuditEvent(parsedMessage.messageId, parsedMessage.exchange, 'FAILED', {
-      error: `Ontology validation failed: ${ontologyValidation.error}`,
-    });
-    sendJsonResponse(res, 400, { error: ontologyValidation.error });
-    return;
+  if (config.httpValidateOntology) {
+    const ontologyValidation = validateOntologyPayload(parsedMessage);
+    if (!ontologyValidation.isValid) {
+      console.error(`[HTTP Listener] Ontology validation failed for exchange ${parsedMessage.exchange}: ${ontologyValidation.error}`);
+      await publishAuditEvent(parsedMessage.messageId, parsedMessage.exchange, 'FAILED', {
+        error: `Ontology validation failed: ${ontologyValidation.error}`,
+      });
+      sendJsonResponse(res, 400, { error: ontologyValidation.error });
+      return;
+    }
   }
 
   try {

@@ -137,7 +137,7 @@ export async function routeMessage(message) {
         'Content-Type': 'application/json',
         'X-Message-ID': messageId,
         'X-Pilot-ID': pilotId, /* optional */
-        'x-api-key': apiKey,
+        ...(apiKey ? { 'x-api-key': apiKey } : {}),
         'X-Exchange-Discriminator': exchange,
         'User-Agent': 'INTELLIGENT-Grid-Operator-Middleware/2.0.0',
       },

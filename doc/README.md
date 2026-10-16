@@ -39,7 +39,7 @@ Configure the middleware by creating a `.env` file in the `source` directory (or
 | `FLOW_CONTROL_MAX_MESSAGES` | Max concurrent messages pulled | `100` |
 | `ACK_DEADLINE_SECONDS` | Message ACK deadline in seconds | `60` |
 | `ENDPOINT` | Downstream gateway endpoint URL | `https://api.intelligent-pilot.eu/api/v2/messages` |
-| `ENDPOINT_API_KEY` | API key sent in `x-api-key` | `api-key-secure-v2` |
+| `ENDPOINT_API_KEY` | API key sent in `x-api-key`; unset means the header is omitted | _(unset)_ |
 | `PUBSUB_ENABLED` | Enable GCP Pub/Sub subscriber mode | `true` |
 | `PUBLISH_AUDIT_EVENT` | Enable audit publishing to Pub/Sub | `false` |
 | `HTTP_LISTENER_ENABLED` | Enable HTTP listener mode | `true` |

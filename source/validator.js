@@ -57,8 +57,8 @@ export function validateTransportHeader(msg) {
   }
 
   // 6. Check payload structure presence
-  if (!msg.payload || typeof msg.payload !== 'object') {
-    return { isValid: false, error: 'Missing or invalid "payload" object in transport header' };
+  if (msg.payload === null || !['object', 'string'].includes(typeof msg.payload)) {
+    return { isValid: false, error: 'Missing or invalid "payload": expected an object or string' };
   }
 
   return { isValid: true, error: null };
@@ -71,7 +71,20 @@ export function validateTransportHeader(msg) {
  * @returns {object} Ontology validation result { isValid: boolean, error: string|null }
  */
 export function validateOntologyPayload(msg) {
-  const { exchange, payload } = msg;
+  const { exchange } = msg;
+  let payload = msg.payload;
+
+  if (typeof payload === 'string') {
+    try {
+      payload = JSON.parse(payload);
+    } catch {
+      return { isValid: false, error: 'Ontology validation requires payload to contain valid JSON' };
+    }
+  }
+
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    return { isValid: false, error: 'Ontology validation requires a JSON object payload' };
+  }
 
   switch (exchange) {
     case 'Metering':

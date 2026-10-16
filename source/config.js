@@ -19,7 +19,7 @@ const normalizeExchangeKey = (exchange) => {
 };
 
 const defaultEndpoint = process.env.ENDPOINT || 'https://api.intelligent-pilot.eu/api/v2/messages';
-const defaultApiKey = process.env.ENDPOINT_API_KEY || 'api-key-secure-v2';
+const defaultApiKey = process.env.ENDPOINT_API_KEY || '';
 const defaultTopicName = process.env.TOPIC_NAME || 'TOPIC_NAME';
 const defaultTopicOwner = process.env.TOPIC_OWNER || 'TOPIC_OWNER';
 const defaultTopicVersion = process.env.TOPIC_VERSION || 'TOPIC_VERSION';
@@ -83,6 +83,7 @@ export const config = {
   entityId: process.env.ENTITY_ID || '612',
   pubsubEnabled: process.env.PUBSUB_ENABLED !== 'false',
   httpListenerEnabled: process.env.HTTP_LISTENER_ENABLED !== 'false',
+  httpValidateOntology: parseBoolean(process.env.HTTP_VALIDATE_ONTOLOGY, true),
   httpListenerPort: parseInt(process.env.HTTP_LISTENER_PORT || '8080', 10),
   httpListenerPath: process.env.HTTP_LISTENER_PATH || '/message',
 
